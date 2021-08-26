@@ -323,9 +323,11 @@ class RolloutBuffer(BaseBuffer):
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
+        is_continuing_task: bool = False,
     ):
 
         super(RolloutBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        self.is_continuing_task = is_continuing_task
         self.gae_lambda = gae_lambda
         self.gamma = gamma
         self.observations, self.actions, self.rewards, self.advantages = None, None, None, None
@@ -368,6 +370,7 @@ class RolloutBuffer(BaseBuffer):
         """
         # Convert to numpy
         last_values = last_values.clone().cpu().numpy().flatten()
+        avg_r = self.rewards.mean()
 
         last_gae_lam = 0
         for step in reversed(range(self.buffer_size)):
@@ -377,12 +380,17 @@ class RolloutBuffer(BaseBuffer):
             else:
                 next_non_terminal = 1.0 - self.episode_starts[step + 1]
                 next_values = self.values[step + 1]
-            delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
-            last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
+            if self.is_continuing_task:
+                delta = self.rewards[step] - avg_r + next_values * next_non_terminal - self.values[step]
+                last_gae_lam = delta + self.gae_lambda * next_non_terminal * last_gae_lam
+            else:
+                delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
+                last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             self.advantages[step] = last_gae_lam
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
         # in David Silver Lecture 4: https://www.youtube.com/watch?v=PnHCvfgC_ZA
         self.returns = self.advantages + self.values
+
 
     def add(
         self,
