@@ -110,8 +110,10 @@ class LSTMExtractor(BaseFeaturesExtractor):
         self.lstm_state_h = None
         self.lstm_state_c = None
 
+        self.flatten = nn.Flatten()
+
     def forward(self, observations: th.Tensor, lstm_state: Tuple[th.Tensor, th.Tensor] = None) -> th.Tensor:
-        y = observations
+        y = self.flatten(observations)
         if self.fc_layer is not None:
             y = th.relu(self.fc_layer(y))
 
