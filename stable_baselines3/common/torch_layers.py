@@ -1,5 +1,5 @@
 from itertools import zip_longest
-from typing import Dict, List, Tuple, Type, Union
+from typing import Dict, List, Tuple, Type, Union, Optional
 
 import gym
 import torch as th
@@ -91,6 +91,35 @@ class NatureCNN(BaseFeaturesExtractor):
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
         return self.linear(self.cnn(observations))
+
+
+class LSTMExtractor(BaseFeaturesExtractor):
+
+    def __init__(self, observation_space: gym.Space, lstm_output_dim: int = 64, pre_lstm_fc_dim: Optional[int] = None):
+        super().__init__(observation_space, lstm_output_dim)
+
+        flattened_obs_dim = get_flattened_obs_dim(observation_space)
+        lstm_input_dim = flattened_obs_dim
+        self.fc_layer = None
+        if pre_lstm_fc_dim is not None:
+            self.fc_layer = nn.Linear(flattened_obs_dim, pre_lstm_fc_dim)
+            lstm_input_dim = pre_lstm_fc_dim
+
+        self.lstm = nn.LSTM(input_size=lstm_input_dim,
+                            hidden_size=lstm_output_dim)
+        self.lstm_state_h = None
+        self.lstm_state_c = None
+
+    def forward(self, observations: th.Tensor, lstm_state: Tuple[th.Tensor, th.Tensor] = None) -> th.Tensor:
+        y = observations
+        if self.fc_layer is not None:
+            y = th.relu(self.fc_layer(y))
+
+        if lstm_state is None:
+            lstm_state = None if self.lstm_state_h is None else (self.lstm_state_h, self.lstm_state_c)
+        y, (self.lstm_state_h, self.lstm_state_c) = self.lstm(th.unsqueeze(y, dim=0), lstm_state)
+
+        return y[0]
 
 
 def create_mlp(

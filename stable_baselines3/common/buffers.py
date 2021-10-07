@@ -332,6 +332,7 @@ class RolloutBuffer(BaseBuffer):
         self.gamma = gamma
         self.observations, self.actions, self.rewards, self.advantages = None, None, None, None
         self.returns, self.episode_starts, self.values, self.log_probs = None, None, None, None
+        self.extras = {}
         self.generator_ready = False
         self.reset()
 
@@ -346,6 +347,10 @@ class RolloutBuffer(BaseBuffer):
         self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.generator_ready = False
+
+        for key, array in self.extras.items():
+            self.extras[key] = np.zeros_like(array)
+
         super(RolloutBuffer, self).reset()
 
     def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray) -> None:
@@ -400,6 +405,7 @@ class RolloutBuffer(BaseBuffer):
         episode_start: np.ndarray,
         value: th.Tensor,
         log_prob: th.Tensor,
+        extras: Optional[Dict[str, Union[th.Tensor, np.ndarray]]] = None,
     ) -> None:
         """
         :param obs: Observation
@@ -410,6 +416,7 @@ class RolloutBuffer(BaseBuffer):
             following the current policy.
         :param log_prob: log probability of the action
             following the current policy.
+        :param extras: a dictionary with extra tensors that may be relevant in the learning process.
         """
         if len(log_prob.shape) == 0:
             # Reshape 0-d tensor to avoid error
@@ -426,6 +433,20 @@ class RolloutBuffer(BaseBuffer):
         self.episode_starts[self.pos] = np.array(episode_start).copy()
         self.values[self.pos] = value.clone().cpu().numpy().flatten()
         self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+
+        if extras is not None:
+            for key, tensor in extras.items():
+                if isinstance(tensor, th.Tensor):
+                    np_tensor = tensor.clone().cpu().numpy()
+                else:
+                    assert isinstance(tensor, np.ndarray)
+                    np_tensor = np.array(tensor).copy()
+
+                if key not in self.extras:
+                    self.extras[key] = np.zeros((self.buffer_size,) + np_tensor.shape, dtype=np.float32)
+
+                self.extras[key][self.pos] = np_tensor
+
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -447,6 +468,16 @@ class RolloutBuffer(BaseBuffer):
 
             for tensor in _tensor_names:
                 self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
+            for key, tensor in self.extras.items():
+                if key in ['lstm_state_h', 'lstm_state_c']:
+                    # shape: (buffer dim, 1, batch dim (n_envs), features_dims)
+                    transformed = self.extras[key].swapaxes(1, 2)
+                    transformed = transformed.swapaxes(0, 1)
+                    shape = transformed.shape
+                    transformed = transformed.reshape(shape[0] * shape[1], *shape[2:])
+                    self.extras[key] = transformed
+                else:
+                    self.extras[key] = self.swap_and_flatten(tensor)
             self.generator_ready = True
 
         # Return everything, don't create minibatches
@@ -467,7 +498,8 @@ class RolloutBuffer(BaseBuffer):
             self.advantages[batch_inds].flatten(),
             self.returns[batch_inds].flatten(),
         )
-        return RolloutBufferSamples(*tuple(map(self.to_torch, data)))
+        extras = {key: self.to_torch(tensor[batch_inds].swapaxes(0, 1)) for key, tensor in self.extras.items()}
+        return RolloutBufferSamples(*tuple(map(self.to_torch, data)), extras)
 
 
 class DictReplayBuffer(ReplayBuffer):
@@ -655,6 +687,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.gamma = gamma
         self.observations, self.actions, self.rewards, self.advantages = None, None, None, None
         self.returns, self.episode_starts, self.values, self.log_probs = None, None, None, None
+        self.extras = {}
         self.generator_ready = False
         self.reset()
 
@@ -671,6 +704,10 @@ class DictRolloutBuffer(RolloutBuffer):
         self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.generator_ready = False
+
+        for key, array in self.extras.items():
+            self.extras[key] = np.zeros_like(array)
+
         super(RolloutBuffer, self).reset()
 
     def add(
@@ -681,6 +718,7 @@ class DictRolloutBuffer(RolloutBuffer):
         episode_start: np.ndarray,
         value: th.Tensor,
         log_prob: th.Tensor,
+        extras: Optional[Dict[str, Union[th.Tensor, np.ndarray]]] = None,
     ) -> None:
         """
         :param obs: Observation
@@ -691,6 +729,7 @@ class DictRolloutBuffer(RolloutBuffer):
             following the current policy.
         :param log_prob: log probability of the action
             following the current policy.
+        :param extras: a dictionary with extra tensors that may be relevant in the learning process.
         """
         if len(log_prob.shape) == 0:
             # Reshape 0-d tensor to avoid error
@@ -709,6 +748,20 @@ class DictRolloutBuffer(RolloutBuffer):
         self.episode_starts[self.pos] = np.array(episode_start).copy()
         self.values[self.pos] = value.clone().cpu().numpy().flatten()
         self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+
+        if extras is not None:
+            for key, tensor in extras.items():
+                if isinstance(tensor, th.Tensor):
+                    np_tensor = tensor.clone().cpu().numpy()
+                else:
+                    assert isinstance(tensor, np.ndarray)
+                    np_tensor = np.array(tensor).copy()
+
+                if key not in self.extras:
+                    self.extras[key] = np.zeros((self.buffer_size,) + np_tensor.shape, dtype=np.float32)
+
+                self.extras[key][self.pos] = np_tensor
+
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -726,6 +779,16 @@ class DictRolloutBuffer(RolloutBuffer):
 
             for tensor in _tensor_names:
                 self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
+            for key, tensor in self.extras.items():
+                if key in ['lstm_state_h', 'lstm_state_c']:
+                    # shape: (buffer dim, 1, batch dim (n_envs), features_dims)
+                    transformed = self.extras[key].swapaxes(1, 2)
+                    transformed = transformed.swapaxes(0, 1)
+                    shape = transformed.shape
+                    transformed = transformed.reshape(shape[0] * shape[1], *shape[2:])
+                    self.extras[key] = transformed
+                else:
+                    self.extras[key] = self.swap_and_flatten(tensor)
             self.generator_ready = True
 
         # Return everything, don't create minibatches
@@ -746,4 +809,5 @@ class DictRolloutBuffer(RolloutBuffer):
             old_log_prob=self.to_torch(self.log_probs[batch_inds].flatten()),
             advantages=self.to_torch(self.advantages[batch_inds].flatten()),
             returns=self.to_torch(self.returns[batch_inds].flatten()),
+            extras={key: self.to_torch(tensor[batch_inds]) for key, tensor in self.extras.items()},
         )

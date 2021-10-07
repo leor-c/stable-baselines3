@@ -9,6 +9,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
+from stable_baselines3.common.torch_layers import LSTMExtractor
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 from stable_baselines3.common.vec_env import VecEnv
@@ -163,6 +164,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 # Sample a new noise matrix
                 self.policy.reset_noise(env.num_envs)
 
+            extras = {}
+            is_lstm_first_step = None
+            if isinstance(self.policy.features_extractor, LSTMExtractor):
+                extras['lstm_state_h'] = self.policy.features_extractor.lstm_state_h
+                extras['lstm_state_c'] = self.policy.features_extractor.lstm_state_c
+                is_lstm_first_step = extras['lstm_state_h'] is None
+
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
@@ -190,7 +198,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             if isinstance(self.action_space, gym.spaces.Discrete):
                 # Reshape in case of discrete action
                 actions = actions.reshape(-1, 1)
-            rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_probs)
+
+            if is_lstm_first_step:
+                extras['lstm_state_h'] = th.zeros_like(self.policy.features_extractor.lstm_state_h)
+                extras['lstm_state_c'] = th.zeros_like(self.policy.features_extractor.lstm_state_c)
+
+            rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_probs,
+                               extras=extras)
             self._last_obs = new_obs
             self._last_episode_starts = dones
 

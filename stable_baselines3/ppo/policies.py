@@ -2,6 +2,7 @@
 # that work for PPO
 from stable_baselines3.common.policies import (
     ActorCriticCnnPolicy,
+    RecurrentActorCriticPolicy,
     ActorCriticPolicy,
     MultiInputActorCriticPolicy,
     register_policy,
@@ -10,7 +11,9 @@ from stable_baselines3.common.policies import (
 MlpPolicy = ActorCriticPolicy
 CnnPolicy = ActorCriticCnnPolicy
 MultiInputPolicy = MultiInputActorCriticPolicy
+LstmPolicy = RecurrentActorCriticPolicy
 
 register_policy("MlpPolicy", ActorCriticPolicy)
 register_policy("CnnPolicy", ActorCriticCnnPolicy)
 register_policy("MultiInputPolicy", MultiInputPolicy)
+register_policy("LstmPolicy", LstmPolicy)
