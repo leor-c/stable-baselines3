@@ -348,8 +348,7 @@ class RolloutBuffer(BaseBuffer):
         self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.generator_ready = False
 
-        for key, array in self.extras.items():
-            self.extras[key] = np.zeros_like(array)
+        self.extras = {}
 
         super(RolloutBuffer, self).reset()
 
