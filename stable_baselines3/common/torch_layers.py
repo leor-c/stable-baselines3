@@ -127,6 +127,10 @@ class LSTMExtractor(BaseFeaturesExtractor):
 
         return y[0]
 
+    def reset_lstm_state(self):
+        self.lstm_state_h = None
+        self.lstm_state_c = None
+
 
 def create_mlp(
     input_dim: int,
