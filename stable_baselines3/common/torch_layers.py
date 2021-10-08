@@ -120,7 +120,7 @@ class LSTMExtractor(BaseFeaturesExtractor):
         if lstm_state is None:
             lstm_state = None if self.lstm_state_h is None else (self.lstm_state_h, self.lstm_state_c)
         if len(y.size()) == 2:
-            y = th.unsqueeze(y, dim=0)
+            y = th.unsqueeze(y, dim=1)
         y, (lstm_state_h, lstm_state_c) = self.lstm(y, lstm_state)
         if lstm_state is None:
             self.lstm_state_h, self.lstm_state_c = lstm_state_h, lstm_state_c
