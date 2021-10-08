@@ -324,9 +324,11 @@ class RolloutBuffer(BaseBuffer):
         gamma: float = 0.99,
         n_envs: int = 1,
         is_continuing_task: bool = False,
+        shuffle: bool = True,
     ):
 
         super(RolloutBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        self.shuffle = shuffle
         self.is_continuing_task = is_continuing_task
         self.gae_lambda = gae_lambda
         self.gamma = gamma
@@ -452,7 +454,10 @@ class RolloutBuffer(BaseBuffer):
 
     def get(self, batch_size: Optional[int] = None) -> Generator[RolloutBufferSamples, None, None]:
         assert self.full, ""
-        indices = np.random.permutation(self.buffer_size * self.n_envs)
+        if self.shuffle:
+            indices = np.random.permutation(self.buffer_size * self.n_envs)
+        else:
+            indices = np.array(range(self.buffer_size * self.n_envs))
         # Prepare the data
         if not self.generator_ready:
 
